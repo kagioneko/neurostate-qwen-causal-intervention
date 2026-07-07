@@ -1,0 +1,19 @@
+__pycache__/
+.pytest_cache/
+.ipynb_checkpoints/
+.venv/
+venv/
+*.pyc
+
+# Large or regenerated experiment outputs.
+outputs*/
+analysis*/
+runs_*/
+colab_results/
+*.zip
+
+# Local/editor files.
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
