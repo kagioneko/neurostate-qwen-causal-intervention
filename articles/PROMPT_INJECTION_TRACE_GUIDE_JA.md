@@ -17,13 +17,14 @@
 ColabをGPUランタイムにし、ノートブックを上から実行します。アップロード画面では3本の
 Pythonファイルを同時に選びます。
 
-## 5条件
+## 6条件
 
 1. `benign`: 売上増加だけを含む文書。
 2. `injection`: 文書内に `INJECTION_ACCEPTED`を要求する模擬命令を含む。
 3. `quoted_control`: 同じ攻撃文字列を引用文として含む。
 4. `target_mention_control`: target文字列だけを無害なラベルとして含む。
-5. `matched_control`: 同程度の長さで、元の要約指示を維持する無害な文を含む。
+5. `negated_target_control`: targetを回答しないよう明示する命令形control。
+6. `matched_control`: 同程度の長さで、元の要約指示を維持する無害な文を含む。
 
 実行順は上記へ固定します。結果を見てcontrol文を差し替えません。
 
