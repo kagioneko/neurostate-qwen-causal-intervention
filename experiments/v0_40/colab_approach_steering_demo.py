@@ -49,11 +49,18 @@ class SteeringResult:
 class TraceStep:
     step: int
     token: str
+    raw_token: str
+    cumulative_text: str
     token_id: int
+    baseline_token: str
+    baseline_token_id: int
+    argmax_changed: bool
     intervention_applied: bool
     baseline_contrast: float
     steered_contrast: float
     delta: float
+    baseline_margin: float
+    steered_margin: float
 
 
 class ApproachSteeringDemo:
@@ -212,11 +219,15 @@ class ApproachSteeringDemo:
         max_new_tokens: int = 40,
         direction_name: str = "semantic",
         enable_thinking: bool = True,
+        allow_extended_alpha: bool = False,
     ) -> SteeringResult:
         if not prompt.strip():
             raise ValueError("Prompt is empty")
-        if not -2.0 <= alpha <= 2.0:
-            raise ValueError("alpha must be between -2 and 2")
+        alpha_limit = 4.0 if allow_extended_alpha else 2.0
+        if not -alpha_limit <= alpha <= alpha_limit:
+            raise ValueError(
+                f"alpha must be between {-alpha_limit:g} and {alpha_limit:g}"
+            )
         max_new_tokens = max(1, min(int(max_new_tokens), 96))
         inputs = self._inputs(prompt, enable_thinking)
         baseline_logits = self._next_logits(inputs, 0.0)
@@ -267,17 +278,22 @@ class ApproachSteeringDemo:
         max_new_tokens: int = 40,
         direction_name: str = "semantic",
         enable_thinking: bool = True,
+        allow_extended_alpha: bool = False,
     ):
         if not prompt.strip():
             raise ValueError("Prompt is empty")
-        if not -2.0 <= alpha <= 2.0:
-            raise ValueError("alpha must be between -2 and 2")
+        alpha_limit = 4.0 if allow_extended_alpha else 2.0
+        if not -alpha_limit <= alpha <= alpha_limit:
+            raise ValueError(
+                f"alpha must be between {-alpha_limit:g} and {alpha_limit:g}"
+            )
         if mode not in {"observe", "boundary", "continuous"}:
             raise ValueError("mode must be observe, boundary, or continuous")
         max_new_tokens = max(1, min(int(max_new_tokens), 96))
         initial = self._inputs(prompt, enable_thinking)
         full_ids = initial["input_ids"]
         trace_steps = []
+        generated_token_ids = []
 
         for step in range(max_new_tokens):
             current = {
@@ -297,20 +313,46 @@ class ApproachSteeringDemo:
                 choice_logits = baseline_logits
             baseline_contrast = self._contrast(baseline_logits)
             steered_contrast = self._contrast(choice_logits)
+            baseline_top = self.torch.topk(baseline_logits, k=2)
+            steered_top = self.torch.topk(choice_logits, k=2)
+            baseline_token_id = int(baseline_top.indices[0].item())
             token_id = int(choice_logits.argmax().item())
+            baseline_token = self.tokenizer.decode(
+                [baseline_token_id],
+                skip_special_tokens=False,
+            )
             token = self.tokenizer.decode(
                 [token_id],
+                skip_special_tokens=False,
+            )
+            raw_token = self.tokenizer.convert_ids_to_tokens(token_id)
+            generated_token_ids.append(token_id)
+            cumulative_text = self.tokenizer.decode(
+                generated_token_ids,
                 skip_special_tokens=False,
             )
             trace_steps.append(
                 TraceStep(
                     step=step,
                     token=token,
+                    raw_token=raw_token,
+                    cumulative_text=cumulative_text,
                     token_id=token_id,
-                    intervention_applied=apply_intervention,
+                    baseline_token=baseline_token,
+                    baseline_token_id=baseline_token_id,
+                    argmax_changed=baseline_token_id != token_id,
+                    intervention_applied=(
+                        apply_intervention and float(alpha) != 0.0
+                    ),
                     baseline_contrast=baseline_contrast,
                     steered_contrast=steered_contrast,
                     delta=steered_contrast - baseline_contrast,
+                    baseline_margin=float(
+                        (baseline_top.values[0] - baseline_top.values[1]).item()
+                    ),
+                    steered_margin=float(
+                        (steered_top.values[0] - steered_top.values[1]).item()
+                    ),
                 )
             )
             next_token = self.torch.tensor(
@@ -330,6 +372,7 @@ class ApproachSteeringDemo:
         return {
             "direction_name": direction_name,
             "enable_thinking": bool(enable_thinking),
+            "extended_alpha": bool(allow_extended_alpha),
             "mode": mode,
             "alpha": float(alpha),
             "generated": generated,

@@ -53,6 +53,15 @@ response boundaryが変わるため、semantic方向とrandom 5本もno-thinking
 no-thinkingは探索条件です。既存のthinking条件と効果量を直接比較せず、no-thinking内で
 semantic対randomを改めて比較してください。
 
+## Extended alpha
+
+既定範囲は検証に使用した `-2` から `+2` です。`extended alpha ±4 (exploratory)` を
+オンにした場合だけ、スライダーを `-4` から `+4` へ拡張できます。
+
+これは効果を強く見せるための成功判定ではなく、token順位の初回分岐、反復、文法崩壊、
+終了tokenの消失などがどこで始まるかを観察する探索設定です。±2の結果と別枠で記録し、
+semanticで変化した場合は同じalphaのrandom方向とも比較してください。
+
 ## 最初に試す入力
 
 今回のデモで最初に推奨する入力です。
@@ -185,9 +194,19 @@ Continuousの文章変化は探索結果であり、1回の出力だけで意味
 - `delta`: steered - baseline。
 - `applied`: そのstepで介入したか。
 - `token`: 実際に選ばれたtoken。
+- `raw_token`: tokenizer語彙上の未加工token。日本語のbyte断片を確認できます。
+- `cumulative`: そのstepまでのtokenをまとめてdecodeした文字列。
+- `baseline_top`: 介入前の首位token。
+- `choice_top`: 実際に選択した介入後の首位token。
+- `argmax_changed`: 介入前後で首位tokenが入れ替わったか。
+- `baseline_margin`: 介入前の1位logitと2位logitの差。
+- `steered_margin`: 介入後の1位logitと2位logitの差。
 
 内部値が変わってもtokenが変わらない場合があります。候補tokenの順位境界を越えるまで、
 内部の連続変化は外部の文章へ現れません。
+
+`alpha=0`では実効的なhookが入らないため、`applied`はFalseになります。Boundaryまたは
+Continuousを選んでいても、ゼロ介入を適用済みとは表示しません。
 
 ## 成功・不成功の見方
 
