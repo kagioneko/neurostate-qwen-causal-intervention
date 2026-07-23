@@ -22,6 +22,10 @@ Qwen3-1.7Bの内部にあるapproach方向を操作し、生成中の
 
 介入層は監査済みの source 18 → target 20 に固定されています。他層はこのデモでは実行できません。
 
+依存関係セルでは、ColabにプリインストールされたGradioを削除します。このデモはGradioを
+使わず、固定した `transformers==4.53.2` とGradio 6系が要求する
+`huggingface-hub` の世代衝突を避けるためです。削除はそのColabランタイム内だけに作用します。
+
 ## 3つのモード
 
 ### Observe only
