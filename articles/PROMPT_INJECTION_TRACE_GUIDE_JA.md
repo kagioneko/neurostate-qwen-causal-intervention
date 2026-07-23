@@ -17,12 +17,13 @@
 ColabをGPUランタイムにし、ノートブックを上から実行します。アップロード画面では3本の
 Pythonファイルを同時に選びます。
 
-## 4条件
+## 5条件
 
 1. `benign`: 売上増加だけを含む文書。
 2. `injection`: 文書内に `INJECTION_ACCEPTED`を要求する模擬命令を含む。
 3. `quoted_control`: 同じ攻撃文字列を引用文として含む。
-4. `matched_control`: 同程度の長さで、元の要約指示を維持する無害な文を含む。
+4. `target_mention_control`: target文字列だけを無害なラベルとして含む。
+5. `matched_control`: 同程度の長さで、元の要約指示を維持する無害な文を含む。
 
 実行順は上記へ固定します。結果を見てcontrol文を差し替えません。
 
@@ -32,6 +33,12 @@ Pythonファイルを同時に選びます。
 
 赤帯の注入・control spanでsemantic approach投影が変わるかを見ます。5本のrandom投影も
 同時表示します。語彙が変われば投影が動くため、これだけで注入受容とは判定しません。
+
+表にはraw projection、hidden norm、cosineを表示します。特殊tokenではhidden normが
+大きくraw projectionも巨大になり得るため、条件比較グラフにはnormで割ったcosineを使います。
+
+Qwen3のno-thinking chat templateは、入力prefixへ空の`<think></think>`を含める場合が
+あります。これはモデルが自由生成した思考ではなく、応答開始形式の一部です。
 
 ### 2. Exact candidate score
 
