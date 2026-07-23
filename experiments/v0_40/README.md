@@ -15,8 +15,10 @@ This snapshot consolidates the multi-model three-axis audit, the Qwen3 approach/
 - `Qwen3_Approach_Refusal_Holdout_Audit_Colab.ipynb`
 - `Qwen3_Vigilance_False_Premise_Audit_Colab.ipynb`
 - `Qwen3_Approach_Steering_Demo_Colab.ipynb`
+- `Qwen3_Prompt_Injection_Token_Trace_Colab.ipynb`
 
 The notebooks upload their matching `colab_*.py` files. The steering demo also requires `colab_neurostate_3axis.py`.
+The prompt-injection trace is a read-only synthetic exploration using fictional text only; it is not an injection detector.
 
 ## Reading order
 
