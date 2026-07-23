@@ -208,6 +208,24 @@ Continuousの文章変化は探索結果であり、1回の出力だけで意味
 `alpha=0`では実効的なhookが入らないため、`applied`はFalseになります。Boundaryまたは
 Continuousを選んでいても、ゼロ介入を適用済みとは表示しません。
 
+## Exact candidate sequence scores
+
+従来のcontrastは、先頭空白付きの英語bank語について最初のtoken IDを集計します。しかし
+実際の回答では `proceed` が `pro | ceed` のように複数tokenへ分かれる場合があり、
+first-token bankと生成候補は同一ではありません。
+
+`candidate A` と `candidate B`へ完成回答を入力すると、各候補をteacher forcingでEOSまで
+採点し、次を表示します。
+
+- 候補を構成するtoken IDとraw token。
+- 介入前後の候補全文の合計log probability。
+- 1 tokenあたりの平均log probability。
+- AとBの合計score差が介入でどれだけ動いたか。
+
+合計scoreは候補系列そのものの尤度ですが、長い候補ほど負の値が加算されます。平均scoreは
+長さをならした参考値で、別の判断基準です。両方を表示し、一方だけを結果後に選びません。
+この採点は強制した候補の比較であり、モデルが自由生成でその回答を選ぶことを保証しません。
+
 ## 成功・不成功の見方
 
 成功の目安:

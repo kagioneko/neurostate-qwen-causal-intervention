@@ -63,6 +63,19 @@ class TraceStep:
     steered_margin: float
 
 
+@dataclass
+class CandidateScore:
+    candidate: str
+    token_ids: list[int]
+    raw_tokens: list[str]
+    baseline_total_logprob: float
+    steered_total_logprob: float
+    delta_total_logprob: float
+    baseline_mean_logprob: float
+    steered_mean_logprob: float
+    delta_mean_logprob: float
+
+
 class ApproachSteeringDemo:
     """Research demo validated only for source 18 -> target 20."""
 
@@ -211,6 +224,108 @@ class ApproachSteeringDemo:
                 - logits[self.negative_ids].mean()
             ).cpu()
         )
+
+    def score_candidates(
+        self,
+        prompt: str,
+        candidates,
+        alpha: float,
+        mode: str = "boundary",
+        direction_name: str = "semantic",
+        enable_thinking: bool = True,
+        allow_extended_alpha: bool = False,
+        include_eos: bool = True,
+    ):
+        if not prompt.strip():
+            raise ValueError("Prompt is empty")
+        alpha_limit = 4.0 if allow_extended_alpha else 2.0
+        if not -alpha_limit <= alpha <= alpha_limit:
+            raise ValueError(
+                f"alpha must be between {-alpha_limit:g} and {alpha_limit:g}"
+            )
+        if mode not in {"observe", "boundary", "continuous"}:
+            raise ValueError("mode must be observe, boundary, or continuous")
+
+        cleaned = [str(candidate).strip() for candidate in candidates]
+        if len(cleaned) < 2 or any(not candidate for candidate in cleaned):
+            raise ValueError("Provide at least two non-empty candidates")
+
+        initial = self._inputs(prompt, enable_thinking)
+        results = []
+        for candidate in cleaned:
+            candidate_ids = self.tokenizer.encode(
+                candidate,
+                add_special_tokens=False,
+            )
+            if include_eos:
+                candidate_ids = [*candidate_ids, self.tokenizer.eos_token_id]
+            full_ids = initial["input_ids"]
+            baseline_logprobs = []
+            steered_logprobs = []
+
+            for step, target_id in enumerate(candidate_ids):
+                current = {
+                    "input_ids": full_ids,
+                    "attention_mask": self.torch.ones_like(full_ids),
+                }
+                baseline_logits = self._next_logits(current, 0.0)
+                apply_intervention = (
+                    mode == "continuous"
+                    or (mode == "boundary" and step == 0)
+                )
+                if apply_intervention and float(alpha) != 0.0:
+                    steered_logits = self._next_logits(
+                        current,
+                        float(alpha),
+                        direction_name,
+                        enable_thinking,
+                    )
+                else:
+                    steered_logits = baseline_logits
+                baseline_logprobs.append(
+                    float(
+                        self.torch.log_softmax(baseline_logits, dim=-1)[
+                            target_id
+                        ].item()
+                    )
+                )
+                steered_logprobs.append(
+                    float(
+                        self.torch.log_softmax(steered_logits, dim=-1)[
+                            target_id
+                        ].item()
+                    )
+                )
+                next_token = self.torch.tensor(
+                    [[target_id]],
+                    device=full_ids.device,
+                    dtype=full_ids.dtype,
+                )
+                full_ids = self.torch.cat([full_ids, next_token], dim=1)
+
+            baseline_total = sum(baseline_logprobs)
+            steered_total = sum(steered_logprobs)
+            count = len(candidate_ids)
+            results.append(
+                CandidateScore(
+                    candidate=candidate,
+                    token_ids=candidate_ids,
+                    raw_tokens=[
+                        self.tokenizer.convert_ids_to_tokens(token_id)
+                        for token_id in candidate_ids
+                    ],
+                    baseline_total_logprob=baseline_total,
+                    steered_total_logprob=steered_total,
+                    delta_total_logprob=steered_total - baseline_total,
+                    baseline_mean_logprob=baseline_total / count,
+                    steered_mean_logprob=steered_total / count,
+                    delta_mean_logprob=(
+                        steered_total - baseline_total
+                    )
+                    / count,
+                )
+            )
+        return results
 
     def run(
         self,
