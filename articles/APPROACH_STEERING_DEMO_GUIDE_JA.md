@@ -37,6 +37,18 @@ Qwen3-1.7Bの内部にあるapproach方向を操作し、生成中の
 生成中の全tokenへ継続介入します。文章差が見えやすい一方、未検証の探索条件です。
 結果を検証済みapproach効果と混同しないでください。
 
+## Thinking / no-thinking
+
+`enable thinking (validated default)` は初期状態でオンです。この条件が既存のholdoutと
+今回の4 prompt比較に対応します。
+
+チェックを外すと、Qwen3のchat templateを `enable_thinking=False` に切り替えます。
+response boundaryが変わるため、semantic方向とrandom 5本もno-thinking条件で新しく
+構築してキャッシュします。初回実行だけ時間がかかります。
+
+no-thinkingは探索条件です。既存のthinking条件と効果量を直接比較せず、no-thinking内で
+semantic対randomを改めて比較してください。
+
 ## 最初に試す入力
 
 今回のデモで最初に推奨する入力です。
@@ -145,6 +157,22 @@ Continuousの文章変化は探索結果であり、1回の出力だけで意味
 - 観察: +側の「進む」と-側の「ためらう」が鏡写しになるか
 
 正負が対称とは限りません。LLMの生成は非線形です。
+
+### 実験F: no-thinkingで日本語出力
+
+- `enable thinking` のチェックを外す
+- mode: Boundary
+- tokens: 64
+- alpha: +2
+- direction: semantic、その後random #1〜#5
+- prompt:
+
+```text
+会議まで15分あります。今からできる有益なことを一つ提案してください。必ず日本語で簡潔に回答してください。
+```
+
+最初のtokenが `<think>` 以外になるか、semanticがrandom群を上回るか、日本語の最終回答に
+なるかを別々に記録します。回答言語の変化だけをapproach効果とは判定しません。
 
 ## 表とグラフの読み方
 

@@ -37,6 +37,7 @@ def mean_delta(highs, lows):
 @dataclass
 class SteeringResult:
     direction_name: str
+    enable_thinking: bool
     alpha: float
     baseline_contrast: float
     steered_contrast: float
@@ -91,23 +92,26 @@ class ApproachSteeringDemo:
         self.decoder_layers = layers(self.model)
         self.positive_ids = ids(self.tokenizer, POSITIVE_BANK)
         self.negative_ids = ids(self.tokenizer, NEGATIVE_BANK)
-        self.direction = self._build_direction()
-        self.directions = {"semantic": self.direction}
-        self.directions.update(
-            {
-                f"random #{i + 1}": random_direction(self.direction, seed)
-                for i, seed in enumerate(RANDOM_SEEDS)
-            }
-        )
+        self.direction_banks = {}
+        self.directions = self._directions(enable_thinking=True)
+        self.direction = self.directions["semantic"]
         print(
             "token-bank ids:",
             f"positive={len(self.positive_ids)}/{len(POSITIVE_BANK)}",
             f"negative={len(self.negative_ids)}/{len(NEGATIVE_BANK)}",
         )
 
-    def _activation(self, text: str):
+    def _chat(self, text: str, enable_thinking: bool):
+        return self.tokenizer.apply_chat_template(
+            [{"role": "user", "content": text}],
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=enable_thinking,
+        )
+
+    def _activation(self, text: str, enable_thinking: bool):
         inputs = self.tokenizer(
-            chat(self.tokenizer, text),
+            self._chat(text, enable_thinking),
             return_tensors="pt",
             add_special_tokens=False,
         ).to(self.model.device)
@@ -125,34 +129,62 @@ class ApproachSteeringDemo:
             .tolist()
         )
 
-    def _build_direction(self):
+    def _build_direction(self, enable_thinking: bool):
         low = [
-            self._activation(f"{prompt} {APPROACH_LOW}")
+            self._activation(f"{prompt} {APPROACH_LOW}", enable_thinking)
             for prompt in TRAIN_PROMPTS
         ]
         high = [
-            self._activation(f"{prompt} {APPROACH_HIGH}")
+            self._activation(f"{prompt} {APPROACH_HIGH}", enable_thinking)
             for prompt in TRAIN_PROMPTS
         ]
         return normalize(mean_delta(high, low))
 
-    def _inputs(self, prompt: str):
+    def _directions(self, enable_thinking: bool):
+        key = bool(enable_thinking)
+        if key not in self.direction_banks:
+            label = "thinking" if key else "no-thinking exploratory"
+            print(f"building {label} direction bank...")
+            semantic = self._build_direction(key)
+            bank = {"semantic": semantic}
+            bank.update(
+                {
+                    f"random #{i + 1}": random_direction(semantic, seed)
+                    for i, seed in enumerate(RANDOM_SEEDS)
+                }
+            )
+            self.direction_banks[key] = bank
+        return self.direction_banks[key]
+
+    def _inputs(self, prompt: str, enable_thinking: bool):
         return self.tokenizer(
-            chat(self.tokenizer, prompt),
+            self._chat(prompt, enable_thinking),
             return_tensors="pt",
             add_special_tokens=False,
         ).to(self.model.device)
 
-    def _direction(self, direction_name: str):
-        if direction_name not in self.directions:
+    def _direction(self, direction_name: str, enable_thinking: bool):
+        directions = self._directions(enable_thinking)
+        if direction_name not in directions:
             raise ValueError(f"unknown direction: {direction_name}")
-        return self.directions[direction_name]
+        return directions[direction_name]
 
-    def _next_logits(self, inputs, alpha: float, direction_name: str = "semantic"):
+    def _next_logits(
+        self,
+        inputs,
+        alpha: float,
+        direction_name: str = "semantic",
+        enable_thinking: bool = True,
+    ):
         handle = None
         if alpha != 0:
             handle = self.decoder_layers[self.target_layer].register_forward_hook(
-                Hook(self.torch, self._direction(direction_name), alpha, -1)
+                Hook(
+                    self.torch,
+                    self._direction(direction_name, enable_thinking),
+                    alpha,
+                    -1,
+                )
             )
         try:
             with self.torch.inference_mode():
@@ -179,15 +211,18 @@ class ApproachSteeringDemo:
         alpha: float,
         max_new_tokens: int = 40,
         direction_name: str = "semantic",
+        enable_thinking: bool = True,
     ) -> SteeringResult:
         if not prompt.strip():
             raise ValueError("Prompt is empty")
         if not -2.0 <= alpha <= 2.0:
             raise ValueError("alpha must be between -2 and 2")
         max_new_tokens = max(1, min(int(max_new_tokens), 96))
-        inputs = self._inputs(prompt)
+        inputs = self._inputs(prompt, enable_thinking)
         baseline_logits = self._next_logits(inputs, 0.0)
-        steered_logits = self._next_logits(inputs, float(alpha), direction_name)
+        steered_logits = self._next_logits(
+            inputs, float(alpha), direction_name, enable_thinking
+        )
         baseline_contrast = self._contrast(baseline_logits)
         steered_contrast = self._contrast(steered_logits)
 
@@ -216,6 +251,7 @@ class ApproachSteeringDemo:
         ).strip()
         return SteeringResult(
             direction_name=direction_name,
+            enable_thinking=bool(enable_thinking),
             alpha=float(alpha),
             baseline_contrast=baseline_contrast,
             steered_contrast=steered_contrast,
@@ -230,6 +266,7 @@ class ApproachSteeringDemo:
         mode: str = "observe",
         max_new_tokens: int = 40,
         direction_name: str = "semantic",
+        enable_thinking: bool = True,
     ):
         if not prompt.strip():
             raise ValueError("Prompt is empty")
@@ -238,7 +275,7 @@ class ApproachSteeringDemo:
         if mode not in {"observe", "boundary", "continuous"}:
             raise ValueError("mode must be observe, boundary, or continuous")
         max_new_tokens = max(1, min(int(max_new_tokens), 96))
-        initial = self._inputs(prompt)
+        initial = self._inputs(prompt, enable_thinking)
         full_ids = initial["input_ids"]
         trace_steps = []
 
@@ -254,7 +291,7 @@ class ApproachSteeringDemo:
             )
             if apply_intervention:
                 choice_logits = self._next_logits(
-                    current, float(alpha), direction_name
+                    current, float(alpha), direction_name, enable_thinking
                 )
             else:
                 choice_logits = baseline_logits
@@ -292,6 +329,7 @@ class ApproachSteeringDemo:
         ).strip()
         return {
             "direction_name": direction_name,
+            "enable_thinking": bool(enable_thinking),
             "mode": mode,
             "alpha": float(alpha),
             "generated": generated,
