@@ -72,6 +72,36 @@ Qwen3のarousal残差は主効果 `+0.010056` に対し、approach漏れ `+0.000
 
 OLMo baseは方向変化自体が大きいがrandom方向でも同程度に動く。これは「無反応」ではなく「意味方向としての選択性が弱い」と解釈する。モデル系列も異なるため、指示追従学習だけを原因とは断定しない。
 
+## Qwen3 no-thinking exact candidate探索
+
+first-token bankと実際の生成候補のずれを確認するため、Qwen3-1.7Bの
+`enable_thinking=False`条件でapproach方向を別に再構築した。応答境界へ介入し、
+完成回答 `proceed` と `wait`をEOSまでteacher forcingして、系列全体のlog probabilityを
+比較した。これは既存holdoutとはchat templateが異なる探索条件である。
+
+- `proceed` token IDs: `[776, 4635, 151645]` (`pro | ceed | <|im_end|>`)
+- `wait` token IDs: `[11489, 151645]` (`wait | <|im_end|>`)
+- baseline total logprob差（proceed - wait）: `+3.093816`
+- 自由生成: 全条件で `proceed`
+
+| direction / alpha | bank contrast delta | exact A-B total logprob delta |
+|---|---:|---:|
+| semantic / +2 | +0.043294 | +0.000000 |
+| semantic / -2 | -0.031250 | -0.031250 |
+| random #1 / -2 | — | -0.000000 |
+| random #2 / -2 | — | -0.031250 |
+| random #3 / -2 | — | -0.031250 |
+| random #4 / -2 | — | +0.000000 |
+| random #5 / -2 | — | +0.000000 |
+
+negative semantic介入はexact候補差を予測方向へ動かしたが、5 random中2本が同じ値を
+再現したため選択的効果とは判定しない。非ゼロ値 `0.031250 = 1/32` はfp16 logitの
+量子化刻みである可能性があり、control数も5本に限られる。
+
+この探索では、定義したbank contrast、完成回答系列の相対score、自由生成の3つが
+同一の測定ではないことが直接確認された。既存holdoutが示すのはbank指標上の選択性であり、
+exact候補選択や生成文変化まで実証したものではない。
+
 ## Qwen3 approach 独立holdout・refusal proxy監査
 
 anchored v2の事後性と、approachが既知のrefusal/compliance系方向の言い換えである可能性を監査した。
